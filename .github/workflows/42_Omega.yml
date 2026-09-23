@@ -1,0 +1,70 @@
+name: 42_Omega
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  push:
+    branches: [main, master]
+    paths:
+      - "42_Omega.sh"
+      - "42_Omega.md"
+      - ".github/workflows/42_Omega.yml"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [forty_two_omega]
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify 42_Omega.sh certificate
+        run: |
+          set -euo pipefail
+          BYTES=$(wc -c < 42_Omega.sh | tr -d ' ')
+          echo "bytes=$BYTES"
+          test "$BYTES" -lt 4096
+          rm -f state.json
+          LOG_TM_STATE=state.json CMD=step N=3 bash 42_Omega.sh | tee cert.json
+          python3 - <<'PY'
+          import json
+          o=json.load(open("cert.json"))
+          L=o.get("L") or {}
+          assert o.get("C") is True
+          assert o.get("CG") is True
+          assert o.get("CE") is True
+          assert o.get("CN") is True
+          assert o.get("H_s")==0
+          assert o.get("open")==1
+          assert o.get("final")==0
+          assert o.get("t")==3
+          assert o.get("G")==42
+          assert o.get("E")==[1,1,0,1,0,0]
+          assert o.get("n")==1 and o.get("p")==2 and o.get("k")==1
+          assert o.get("W")=="letsgo0226/public"
+          assert o.get("Phi")=="Phi_CL^inf"
+          assert isinstance(L.get("V"), list) and len(L["V"])>=13
+          assert "2^1" in (L.get("G") or "")
+          assert "riemann" in (L.get("Q") or {})
+          assert isinstance((L.get("M") or {}), dict)
+          print("PASS step", "t=", o["t"], "G=", o["G"], "open=", o["open"], "LG=", L.get("G"))
+          PY
+          LOG_TM_STATE=state.json CMD=reconstruct N=1 bash 42_Omega.sh | tee cert-recon.json
+          python3 - <<'PY'
+          import json
+          o=json.load(open("cert-recon.json"))
+          assert o.get("C") is True and o.get("CF") is True
+          assert o.get("CG") is True and o.get("CE") is True and o.get("CN") is True
+          assert o.get("open")==1
+          print("PASS reconstruct", "t=", o["t"], "CF=", o["CF"], "open=", o["open"])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 42_Omega-certificate
+          path: |
+            cert.json
+            cert-recon.json
